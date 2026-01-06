@@ -3,31 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>折りたたみスマホ連動 (判定強化版)</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Foldable Image Switcher (Ultimate)</title>
     <style>
         body, html {
-            height: 100%;
             margin: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: #000;
+            padding: 0;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
+            background-color: #000;
+            /* 長押しメニューなどを無効化 */
             -webkit-touch-callout: none;
             -webkit-user-select: none;
             user-select: none;
         }
 
-        #display-image {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            transition: opacity 0.2s ease;
-            cursor: pointer;
-            -webkit-user-drag: none;
+        #displayImage {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; 
+            display: block;
+            pointer-events: auto; /* タップを受け付ける */
         }
 
-        /* 設定メニュー */
+        /* 設定メニューのスタイル */
         #settings-overlay {
             position: fixed;
             top: 0;
@@ -35,7 +36,7 @@
             width: 100%;
             height: 100%;
             background: rgba(0, 0, 0, 0.9);
-            display: none;
+            display: none; /* 初期は非表示 */
             flex-direction: column;
             justify-content: center;
             align-items: center;
@@ -56,34 +57,24 @@
             width: 80%;
             text-align: center;
         }
-        
-        .fullscreen-btn {
-            background: #007bff;
-            border-color: #0056b3;
-        }
 
         .close-btn {
             margin-top: 30px;
             background: #d9534f;
             border: none;
         }
-        
+
         h2 { margin-bottom: 20px; font-size: 18px; }
         p { font-size: 12px; color: #aaa; margin-top: -5px; margin-bottom: 15px; }
     </style>
 </head>
 <body>
-
-    <img id="display-image" src="1.png" alt="長押しして設定">
+    
+    <img id="displayImage" src="1.png" alt="長押しで設定">
 
     <div id="settings-overlay">
-        <h2>設定メニュー</h2>
+        <h2>画像設定メニュー</h2>
         
-        <button id="btn-fullscreen" class="upload-btn fullscreen-btn" onclick="toggleFullScreen()">
-            ⛶ 全画面表示にする
-        </button>
-        <div style="margin-bottom: 20px;"></div>
-
         <button class="upload-btn" onclick="document.getElementById('file-normal').click()">
             ① [通常] 画像を選択
         </button>
@@ -103,143 +94,144 @@
     <input type="file" id="file-folded" accept="image/*" style="display: none;">
 
     <script>
-        const imageElement = document.getElementById('display-image');
-        const overlay = document.getElementById('settings-overlay');
-        const fullscreenBtn = document.getElementById('btn-fullscreen');
+        // --- 設定変数 ---
+        // 初期値はファイル名ですが、アップロード後はDataURLになります
+        let image1Src = '1.png';
+        let image2Src = '2.png';
         
-        let normalImgSrc = '1.png';
-        let foldedImgSrc = '2.png';
-        let isShowingImage2 = false;
+        const imgElement = document.getElementById('displayImage');
+        const overlay = document.getElementById('settings-overlay');
+        let currentImageStr = "";
 
-        // --- 全画面表示ロジック ---
-        function toggleFullScreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => {
-                    // 一部の古い端末等でエラーが出る場合の対策
-                    console.log(err);
-                });
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
+        // --- 画像切り替え関数 ---
+        function switchImage(targetImageSrc) {
+            // 同じ画像なら更新しない（チラつき防止）
+            if (currentImageStr !== targetImageSrc) {
+                imgElement.src = targetImageSrc;
+                currentImageStr = targetImageSrc;
+            }
+        }
+
+        // 初期表示
+        switchImage(image1Src);
+
+        // --- 全画面化＆回転ロック処理 (頂いたコードを採用) ---
+        async function enableFullScreenAndLock() {
+            try {
+                if (!document.fullscreenElement) {
+                    await document.documentElement.requestFullscreen();
                 }
-            }
-        }
-
-        document.addEventListener('fullscreenchange', () => {
-            if (document.fullscreenElement) {
-                fullscreenBtn.innerText = '⛶ 普通に戻す';
-            } else {
-                fullscreenBtn.innerText = '⛶ 全画面表示にする';
-            }
-            // 全画面切り替え直後にも判定を走らせる
-            setTimeout(() => handlePostureChange(mediaQueryList), 300);
-        });
-
-        // --- 画像切り替えロジック ---
-        function switchImage(src, isFoldedImage) {
-            // 画像がすでに同じなら何もしない（チラつき防止）
-            if (imageElement.src !== src) {
-                imageElement.src = src;
-            }
-            isShowingImage2 = isFoldedImage;
-        }
-
-        // --- 折りたたみ検知 (強力版) ---
-        const mediaQueryList = window.matchMedia('(vertical-viewport-segments: 2)');
-
-        function handlePostureChange(evtOrList) {
-            // matches プロパティをチェック
-            const isFolded = evtOrList.matches;
-
-            if (isFolded) {
-                // 折れている状態
-                if (!isShowingImage2) {
-                    switchImage(foldedImgSrc, true);
+                // 回転ロック (Portrait)
+                if (screen.orientation && screen.orientation.lock) {
+                    await screen.orientation.lock("portrait");
                 }
-            } else {
-                // 開いている状態
-                // ※「開いたら自動で戻す」機能はOFFにしていますが、
-                // もし開いた時に強制的に戻したい場合はここのコメントアウトを外してください
-                // if (isShowingImage2) { switchImage(normalImgSrc, false); }
+            } catch (err) {
+                console.log("Lock failed:", err);
             }
         }
 
-        // 1. 標準のイベントリスナー
-        if (mediaQueryList.addEventListener) {
-            mediaQueryList.addEventListener('change', handlePostureChange);
-        } else {
-            mediaQueryList.addListener(handlePostureChange);
+        // --- イベントリスナー ---
+
+        // タップ時の処理（画像1に戻す ＆ 全画面・ロック発動）
+        function handleTap(e) {
+            // 設定メニューが開いている、または設定メニュー内のタップなら無視
+            if (overlay.style.display === 'flex' || e.target.closest('#settings-overlay')) {
+                return; 
+            }
+
+            // タッチのデフォルト動作を無効化（ズーム等防止）
+            if (e.type === 'touchstart') e.preventDefault();
+            
+            // 画像を戻す (image1Src変数を参照するように変更)
+            switchImage(image1Src);
+            
+            // 全画面＆ロックを実行
+            enableFullScreenAndLock();
         }
 
-        // 2. ★追加対策: 画面リサイズ時にもチェック (判定漏れを防ぐ)
-        window.addEventListener('resize', function() {
-            handlePostureChange(mediaQueryList);
-        });
-
-        // 初期チェック
-        handlePostureChange(mediaQueryList);
+        // 画像要素に対してのみタップ判定を行う
+        imgElement.addEventListener('click', handleTap);
+        imgElement.addEventListener('touchstart', handleTap, {passive: false});
 
 
-        // --- ファイルアップロード処理 ---
-        document.getElementById('file-normal').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(evt) {
-                    normalImgSrc = evt.target.result;
-                    document.getElementById('status-normal').innerText = file.name;
-                    if (!isShowingImage2) switchImage(normalImgSrc, false);
-                };
-                reader.readAsDataURL(file);
-            }
-        });
+        // --- 折りたたみ検知 (頂いた成功コードを採用) ---
+        
+        // 方法A: Device Posture API
+        if (navigator.devicePosture) {
+            navigator.devicePosture.addEventListener('change', (event) => {
+                // 折れたら image2Src を表示
+                // ※姿勢の判定を追加しても良いですが、changeイベント発火＝変化とみなして切り替えます
+                // 必要であれば event.type === 'folded' などの判定を入れてください
+                switchImage(image2Src);
+            });
+        } 
+        // 方法B: リサイズ検知 (フォールバック)
+        else {
+            let lastAspectRatio = window.innerWidth / window.innerHeight;
+            window.addEventListener('resize', () => {
+                const currentAspectRatio = window.innerWidth / window.innerHeight;
+                const ratioChange = Math.abs(currentAspectRatio - lastAspectRatio);
+                
+                // アスペクト比が大きく変わったら「折れた」とみなす
+                if (ratioChange > 0.3) {
+                     switchImage(image2Src);
+                }
+                lastAspectRatio = currentAspectRatio;
+            });
+        }
 
-        document.getElementById('file-folded').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(evt) {
-                    foldedImgSrc = evt.target.result;
-                    document.getElementById('status-folded').innerText = file.name;
-                    if (isShowingImage2) switchImage(foldedImgSrc, true);
-                };
-                reader.readAsDataURL(file);
-            }
-        });
+        // --- 以下、追加したアップロード機能 ---
 
-        // --- 操作ロジック（長押し＆タップ） ---
-        window.addEventListener('contextmenu', e => e.preventDefault(), { passive: false });
-
+        // 長押しで設定メニューを開く
         let longPressTimer;
         const HOLD_DURATION = 800; 
 
         document.addEventListener('touchstart', function(e) {
             if (overlay.style.display === 'flex') return;
-            longPressTimer = setTimeout(() => openSettings(), HOLD_DURATION);
+            // 設定メニュー以外（画像部分）を長押しした場合のみ
+            if (e.target === imgElement) {
+                longPressTimer = setTimeout(() => openSettings(), HOLD_DURATION);
+            }
         }, { passive: false });
 
         document.addEventListener('touchend', () => clearTimeout(longPressTimer));
         document.addEventListener('touchmove', () => clearTimeout(longPressTimer));
-
-        // タップで通常に戻す
-        imageElement.addEventListener('click', function(e) {
-            if (overlay.style.display !== 'flex' && isShowingImage2) {
-                switchImage(normalImgSrc, false);
-            }
-        });
+        window.addEventListener('contextmenu', e => e.preventDefault(), { passive: false });
 
         function openSettings() {
             overlay.style.display = 'flex';
-            if (document.fullscreenElement) {
-                fullscreenBtn.innerText = '⛶ 普通に戻す';
-            } else {
-                fullscreenBtn.innerText = '⛶ 全画面表示にする';
-            }
         }
-
         function closeSettings() {
             overlay.style.display = 'none';
         }
+
+        // 画像読込処理 (File API)
+        const setupFileLoad = (inputId, isNormal) => {
+            document.getElementById(inputId).addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        const result = evt.target.result;
+                        if (isNormal) {
+                            image1Src = result;
+                            document.getElementById('status-normal').innerText = file.name;
+                            switchImage(image1Src); // 設定中はプレビューとして表示
+                        } else {
+                            image2Src = result;
+                            document.getElementById('status-folded').innerText = file.name;
+                            // 設定メニュー中はプレビューしない方が混乱しないかもですが、
+                            // 確認したい場合はここで switchImage(image2Src) してもOK
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        };
+
+        setupFileLoad('file-normal', true);
+        setupFileLoad('file-folded', false);
+
     </script>
 </body>
 </html>
