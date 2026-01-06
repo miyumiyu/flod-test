@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>折りたたみスマホ連動デモ (全画面対応)</title>
+    <title>折りたたみスマホ連動 (判定強化版)</title>
     <style>
         body, html {
             height: 100%;
@@ -11,7 +11,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            background-color: #000; /* 全画面時は黒背景が綺麗です */
+            background-color: #000;
             overflow: hidden;
             -webkit-touch-callout: none;
             -webkit-user-select: none;
@@ -57,7 +57,6 @@
             text-align: center;
         }
         
-        /* 全画面ボタン用のスタイル（少し色を変える） */
         .fullscreen-btn {
             background: #007bff;
             border-color: #0056b3;
@@ -83,7 +82,9 @@
         <button id="btn-fullscreen" class="upload-btn fullscreen-btn" onclick="toggleFullScreen()">
             ⛶ 全画面表示にする
         </button>
-        <div style="margin-bottom: 20px;"></div> <button class="upload-btn" onclick="document.getElementById('file-normal').click()">
+        <div style="margin-bottom: 20px;"></div>
+
+        <button class="upload-btn" onclick="document.getElementById('file-normal').click()">
             ① [通常] 画像を選択
         </button>
         <p>現在: <span id="status-normal">1.png (初期)</span></p>
@@ -113,48 +114,71 @@
         // --- 全画面表示ロジック ---
         function toggleFullScreen() {
             if (!document.fullscreenElement) {
-                // 全画面にする
                 document.documentElement.requestFullscreen().catch(err => {
-                    alert(`Error: ${err.message}`);
+                    // 一部の古い端末等でエラーが出る場合の対策
+                    console.log(err);
                 });
             } else {
-                // 解除する
                 if (document.exitFullscreen) {
                     document.exitFullscreen();
                 }
             }
         }
 
-        // 全画面状態の変化を監視してボタンの文字を変える
         document.addEventListener('fullscreenchange', () => {
             if (document.fullscreenElement) {
                 fullscreenBtn.innerText = '⛶ 普通に戻す';
             } else {
                 fullscreenBtn.innerText = '⛶ 全画面表示にする';
             }
+            // 全画面切り替え直後にも判定を走らせる
+            setTimeout(() => handlePostureChange(mediaQueryList), 300);
         });
 
         // --- 画像切り替えロジック ---
         function switchImage(src, isFoldedImage) {
-            imageElement.src = src;
+            // 画像がすでに同じなら何もしない（チラつき防止）
+            if (imageElement.src !== src) {
+                imageElement.src = src;
+            }
             isShowingImage2 = isFoldedImage;
         }
 
-        // --- 折りたたみ検知 ---
+        // --- 折りたたみ検知 (強力版) ---
         const mediaQueryList = window.matchMedia('(vertical-viewport-segments: 2)');
-        function handlePostureChange(evt) {
-            if (evt.matches) {
+
+        function handlePostureChange(evtOrList) {
+            // matches プロパティをチェック
+            const isFolded = evtOrList.matches;
+
+            if (isFolded) {
+                // 折れている状態
                 if (!isShowingImage2) {
                     switchImage(foldedImgSrc, true);
                 }
+            } else {
+                // 開いている状態
+                // ※「開いたら自動で戻す」機能はOFFにしていますが、
+                // もし開いた時に強制的に戻したい場合はここのコメントアウトを外してください
+                // if (isShowingImage2) { switchImage(normalImgSrc, false); }
             }
         }
+
+        // 1. 標準のイベントリスナー
         if (mediaQueryList.addEventListener) {
             mediaQueryList.addEventListener('change', handlePostureChange);
         } else {
             mediaQueryList.addListener(handlePostureChange);
         }
+
+        // 2. ★追加対策: 画面リサイズ時にもチェック (判定漏れを防ぐ)
+        window.addEventListener('resize', function() {
+            handlePostureChange(mediaQueryList);
+        });
+
+        // 初期チェック
         handlePostureChange(mediaQueryList);
+
 
         // --- ファイルアップロード処理 ---
         document.getElementById('file-normal').addEventListener('change', function(e) {
@@ -206,7 +230,6 @@
 
         function openSettings() {
             overlay.style.display = 'flex';
-            // メニューを開いた瞬間に、現在の全画面状態に合わせてボタン文字を更新
             if (document.fullscreenElement) {
                 fullscreenBtn.innerText = '⛶ 普通に戻す';
             } else {
