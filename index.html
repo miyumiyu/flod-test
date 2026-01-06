@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Foldable Image Switcher (Ultimate)</title>
+    <title>Foldable Switcher (Double Tap)</title>
     <style>
         body, html {
             margin: 0;
@@ -14,7 +14,7 @@
             height: 100%;
             overflow: hidden;
             background-color: #000;
-            /* 長押しメニューなどを無効化 */
+            /* テキスト選択などを無効化 */
             -webkit-touch-callout: none;
             -webkit-user-select: none;
             user-select: none;
@@ -25,10 +25,10 @@
             height: 100%;
             object-fit: contain; 
             display: block;
-            pointer-events: auto; /* タップを受け付ける */
+            pointer-events: auto;
         }
 
-        /* 設定メニューのスタイル */
+        /* 設定メニュー */
         #settings-overlay {
             position: fixed;
             top: 0;
@@ -36,7 +36,7 @@
             width: 100%;
             height: 100%;
             background: rgba(0, 0, 0, 0.9);
-            display: none; /* 初期は非表示 */
+            display: none;
             flex-direction: column;
             justify-content: center;
             align-items: center;
@@ -70,7 +70,7 @@
 </head>
 <body>
     
-    <img id="displayImage" src="1.png" alt="長押しで設定">
+    <img id="displayImage" src="1.png" alt="ダブルタップで設定">
 
     <div id="settings-overlay">
         <h2>画像設定メニュー</h2>
@@ -95,7 +95,6 @@
 
     <script>
         // --- 設定変数 ---
-        // 初期値はファイル名ですが、アップロード後はDataURLになります
         let image1Src = '1.png';
         let image2Src = '2.png';
         
@@ -103,9 +102,8 @@
         const overlay = document.getElementById('settings-overlay');
         let currentImageStr = "";
 
-        // --- 画像切り替え関数 ---
+        // --- 画像切り替え ---
         function switchImage(targetImageSrc) {
-            // 同じ画像なら更新しない（チラつき防止）
             if (currentImageStr !== targetImageSrc) {
                 imgElement.src = targetImageSrc;
                 currentImageStr = targetImageSrc;
@@ -115,13 +113,12 @@
         // 初期表示
         switchImage(image1Src);
 
-        // --- 全画面化＆回転ロック処理 (頂いたコードを採用) ---
+        // --- 全画面化＆回転ロック ---
         async function enableFullScreenAndLock() {
             try {
                 if (!document.fullscreenElement) {
                     await document.documentElement.requestFullscreen();
                 }
-                // 回転ロック (Portrait)
                 if (screen.orientation && screen.orientation.lock) {
                     await screen.orientation.lock("portrait");
                 }
@@ -130,49 +127,46 @@
             }
         }
 
-        // --- イベントリスナー ---
+        // --- ★操作ロジック（ダブルタップ対応） ---
+        let lastTouchTime = 0;
 
-        // タップ時の処理（画像1に戻す ＆ 全画面・ロック発動）
-        function handleTap(e) {
-            // 設定メニューが開いている、または設定メニュー内のタップなら無視
-            if (overlay.style.display === 'flex' || e.target.closest('#settings-overlay')) {
-                return; 
+        // 画面（画像）をタッチした時の処理
+        imgElement.addEventListener('touchstart', function(e) {
+            // メニューが開いている時は無視
+            if (overlay.style.display === 'flex') return;
+
+            const now = new Date().getTime();
+            const timeDiff = now - lastTouchTime;
+
+            // 300ミリ秒以内に2回タッチしたらダブルタップとみなす
+            if (timeDiff < 300 && timeDiff > 0) {
+                // --- ダブルタップ時 ---
+                e.preventDefault(); // ズーム等を防ぐ
+                openSettings();     // メニューを開く
+            } else {
+                // --- シングルタップ時 ---
+                // 通常の「画像1に戻す」処理を実行
+                // e.preventDefault(); // ここで無効化するとスクロール等もできなくなるので、必要に応じて
+                
+                switchImage(image1Src);
+                enableFullScreenAndLock();
             }
 
-            // タッチのデフォルト動作を無効化（ズーム等防止）
-            if (e.type === 'touchstart') e.preventDefault();
-            
-            // 画像を戻す (image1Src変数を参照するように変更)
-            switchImage(image1Src);
-            
-            // 全画面＆ロックを実行
-            enableFullScreenAndLock();
-        }
-
-        // 画像要素に対してのみタップ判定を行う
-        imgElement.addEventListener('click', handleTap);
-        imgElement.addEventListener('touchstart', handleTap, {passive: false});
+            lastTouchTime = now;
+        }, {passive: false});
 
 
-        // --- 折りたたみ検知 (頂いた成功コードを採用) ---
-        
-        // 方法A: Device Posture API
+        // --- 折りたたみ検知 (ご提供いただいた動作確認済みロジック) ---
         if (navigator.devicePosture) {
             navigator.devicePosture.addEventListener('change', (event) => {
-                // 折れたら image2Src を表示
-                // ※姿勢の判定を追加しても良いですが、changeイベント発火＝変化とみなして切り替えます
-                // 必要であれば event.type === 'folded' などの判定を入れてください
                 switchImage(image2Src);
             });
-        } 
-        // 方法B: リサイズ検知 (フォールバック)
-        else {
+        } else {
             let lastAspectRatio = window.innerWidth / window.innerHeight;
             window.addEventListener('resize', () => {
                 const currentAspectRatio = window.innerWidth / window.innerHeight;
                 const ratioChange = Math.abs(currentAspectRatio - lastAspectRatio);
                 
-                // アスペクト比が大きく変わったら「折れた」とみなす
                 if (ratioChange > 0.3) {
                      switchImage(image2Src);
                 }
@@ -180,24 +174,7 @@
             });
         }
 
-        // --- 以下、追加したアップロード機能 ---
-
-        // 長押しで設定メニューを開く
-        let longPressTimer;
-        const HOLD_DURATION = 800; 
-
-        document.addEventListener('touchstart', function(e) {
-            if (overlay.style.display === 'flex') return;
-            // 設定メニュー以外（画像部分）を長押しした場合のみ
-            if (e.target === imgElement) {
-                longPressTimer = setTimeout(() => openSettings(), HOLD_DURATION);
-            }
-        }, { passive: false });
-
-        document.addEventListener('touchend', () => clearTimeout(longPressTimer));
-        document.addEventListener('touchmove', () => clearTimeout(longPressTimer));
-        window.addEventListener('contextmenu', e => e.preventDefault(), { passive: false });
-
+        // --- 設定メニュー関連 ---
         function openSettings() {
             overlay.style.display = 'flex';
         }
@@ -205,7 +182,7 @@
             overlay.style.display = 'none';
         }
 
-        // 画像読込処理 (File API)
+        // 画像アップロード処理
         const setupFileLoad = (inputId, isNormal) => {
             document.getElementById(inputId).addEventListener('change', function(e) {
                 const file = e.target.files[0];
@@ -216,19 +193,16 @@
                         if (isNormal) {
                             image1Src = result;
                             document.getElementById('status-normal').innerText = file.name;
-                            switchImage(image1Src); // 設定中はプレビューとして表示
+                            switchImage(image1Src);
                         } else {
                             image2Src = result;
                             document.getElementById('status-folded').innerText = file.name;
-                            // 設定メニュー中はプレビューしない方が混乱しないかもですが、
-                            // 確認したい場合はここで switchImage(image2Src) してもOK
                         }
                     };
                     reader.readAsDataURL(file);
                 }
             });
         };
-
         setupFileLoad('file-normal', true);
         setupFileLoad('file-folded', false);
 
