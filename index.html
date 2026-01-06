@@ -2,152 +2,136 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Foldy Bird Clone</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Foldable Image Switcher</title>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background: #70c5ce; }
-        canvas { display: block; margin: 0 auto; background: #70c5ce; }
+        /* CSS: 画像を全画面表示するためのスタイル */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* スクロールを防ぐ */
+            background-color: #000; /* 画像ロード前の背景色 */
+        }
+        #displayImage {
+            width: 100%;
+            height: 100%;
+            /* 画像の表示モード: 
+               contain = 画像全体が収まるように表示（余白ができる可能性あり）
+               cover   = 画面全体を埋め尽くすように表示（画像の一部が切り取られる）
+               お好みで変更してください。 */
+            object-fit: contain; 
+            display: block;
+            pointer-events: none; /* 画像自体へのイベントを無効化し、bodyで受け取る */
+        }
+        /* デバッグ用ステータス表示（邪魔なら display: none; にしてください） */
         #status {
-            position: absolute; top: 10px; left: 10px; 
-            font-family: monospace; font-size: 16px; color: white; 
-            background: rgba(0,0,0,0.5); padding: 5px;
+            position: absolute;
+            top: 10px; left: 10px;
+            color: rgba(255,255,255,0.7);
+            background: rgba(0,0,0,0.5);
+            padding: 4px 8px;
+            font-size: 12px;
+            font-family: sans-serif;
+            pointer-events: none;
+            border-radius: 4px;
         }
     </style>
 </head>
 <body>
-    <div id="status">PC: クリック / Mobile: 折りたたみ動作でジャンプ</div>
-    <canvas id="gameCanvas"></canvas>
-
-<script>
-    // --- ゲームの基本設定 ---
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
+    <div id="status">初期化中...</div>
     
-    // 画面サイズ調整
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    <img id="displayImage" src="" alt="Fullscreen Image">
 
-    let bird = { x: 50, y: 150, width: 20, height: 20, velocity: 0, gravity: 0.6, jump: -10 };
-    let pipes = [];
-    let frame = 0;
-    let score = 0;
-    let isGameOver = false;
-
-    // --- メインループ ---
-    function gameLoop() {
-        if (isGameOver) return;
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // 鳥の物理演算
-        bird.velocity += bird.gravity;
-        bird.y += bird.velocity;
-
-        // 鳥の描画
-        ctx.fillStyle = "yellow";
-        ctx.fillRect(bird.x, bird.y, bird.width, bird.height);
-
-        // 土管の生成と移動
-        if (frame % 100 === 0) {
-            let pipeHeight = Math.random() * (canvas.height - 200) + 50;
-            pipes.push({ x: canvas.width, y: 0, width: 50, height: pipeHeight, passed: false }); // 上の土管
-            pipes.push({ x: canvas.width, y: pipeHeight + 150, width: 50, height: canvas.height, passed: false }); // 下の土管
-        }
-
-        for (let i = 0; i < pipes.length; i++) {
-            let p = pipes[i];
-            p.x -= 3; // スクロール速度
-
-            // 土管の描画
-            ctx.fillStyle = "green";
-            ctx.fillRect(p.x, p.y, p.width, p.height);
-
-            // 衝突判定
-            if (
-                bird.x < p.x + p.width &&
-                bird.x + bird.width > p.x &&
-                bird.y < p.y + p.height &&
-                bird.y + bird.height > p.y
-            ) {
-                gameOver();
-            }
-        }
-
-        // 床・天井判定
-        if (bird.y > canvas.height || bird.y < 0) {
-            gameOver();
-        }
-
-        // 不要な土管の削除
-        if (pipes.length > 0 && pipes[0].x < -50) {
-            pipes.shift();
-            pipes.shift(); // 上下セットで削除
-        }
-
-        frame++;
-        requestAnimationFrame(gameLoop);
-    }
-
-    function doJump() {
-        if (isGameOver) {
-            // リセット
-            bird.y = 150;
-            bird.velocity = 0;
-            pipes = [];
-            frame = 0;
-            isGameOver = false;
-            gameLoop();
-        } else {
-            bird.velocity = bird.jump;
-        }
-    }
-
-    function gameOver() {
-        isGameOver = true;
-        ctx.fillStyle = "white";
-        ctx.font = "30px Arial";
-        ctx.fillText("Game Over", canvas.width / 2 - 80, canvas.height / 2);
-        ctx.fillText("Fold/Click to Retry", canvas.width / 2 - 120, canvas.height / 2 + 40);
-    }
-
-    // --- 入力イベントの設定 ---
-
-    // 1. マウス/タッチ (デバッグ用)
-    window.addEventListener('mousedown', doJump);
-    window.addEventListener('touchstart', (e) => { e.preventDefault(); doJump(); }, {passive: false});
-
-    // 2. 折りたたみスマホ (Device Posture API)
-    // 注意: まだ実験的なAPIであり、Chromeのフラグ設定等が必要な場合があります。
-    if (navigator.devicePosture) {
-        document.getElementById('status').innerText = "Device Posture API Supported!";
+    <script>
+        // --- 設定 ---
+        const IMAGE_1 = '1.png'; // 初期画像＆タップで戻る画像
+        const IMAGE_2 = '2.png'; // 折りたたみ動作で表示する画像
         
-        navigator.devicePosture.addEventListener('change', (event) => {
-            // 姿勢が変わったとき（例: 開いた状態 <-> 折った状態）にジャンプ
-            // 'folded' 状態になったとき、あるいは状態変化そのものをトリガーにする
-            const type = navigator.devicePosture.type;
-            document.getElementById('status').innerText = `Posture: ${type}`;
-            
-            // 例: 「連続(フラット)」から「折れ曲がり」に変わったらジャンプ
-            // 実際には感度調整のため、changeイベントが発火するたびにジャンプさせる実装が多いかもしれません
-            doJump(); 
-        });
-    } else {
-        // Fallback: Device Orientation APIを使用する場合の簡易ロジック
-        // ヒンジの角度を直接取得するのは難しいため、急激な角度変化(beta/gamma)を検知する
-        let lastBeta = 0;
-        window.addEventListener("deviceorientation", (event) => {
-            const currentBeta = event.beta; // 前後の傾き
-            if (Math.abs(currentBeta - lastBeta) > 20) { // 閾値（感度）
-                // 急激に傾きが変わったらジャンプとみなす
-                 // doJump(); // 誤作動が多いためコメントアウトしています。必要に応じて有効化してください
+        const imgElement = document.getElementById('displayImage');
+        const statusElement = document.getElementById('status');
+        let currentImageStr = ""; // 現在表示中の画像ファイル名
+
+        // --- 関数 ---
+        
+        // ステータス更新用
+        function updateStatus(text) {
+            statusElement.textContent = text;
+        }
+
+        // 画像を指定のファイルに切り替える関数
+        function switchImage(targetImage) {
+            if (currentImageStr !== targetImage) {
+                imgElement.src = targetImage;
+                currentImageStr = targetImage;
+
+                if (targetImage === IMAGE_1) {
+                    updateStatus("画像1を表示中。折りたたむと画像2へ。");
+                } else {
+                    updateStatus("画像2を表示中！タップで画像1へ戻る。");
+                }
             }
-            lastBeta = currentBeta;
-        });
-    }
+        }
 
-    // ゲーム開始
-    gameLoop();
+        // --- 初期化処理 ---
+        // ページ読み込み時に初期画像(1.png)を表示
+        switchImage(IMAGE_1);
 
-</script>
+
+        // --- イベントリスナー設定 ---
+
+        // 【トリガー2】画面タップで画像1に戻る
+        // 画面全体(body)へのタップ/クリックを検知します
+        function handleTap(e) {
+            // タッチによる不要な動作（ズームやスクロール）を防ぐ
+            if (e.type === 'touchstart') {
+                e.preventDefault();
+            }
+            // 画像1に戻す
+            switchImage(IMAGE_1);
+        }
+
+        document.body.addEventListener('click', handleTap);
+        document.body.addEventListener('touchstart', handleTap, {passive: false});
+
+
+        // 【トリガー1】折りたたみ動作で画像2へ
+        
+        // 方法A: Device Posture API (本命だが実験的機能)
+        if (navigator.devicePosture) {
+            updateStatus("API対応。画像1表示中。");
+            
+            navigator.devicePosture.addEventListener('change', (event) => {
+                // 姿勢が変化した（パカっとした）タイミングで発火
+                const posture = navigator.devicePosture.type;
+                console.log('姿勢が変化しました:', posture);
+                
+                // 変化を検知したら画像2へ切り替える
+                // (開く動作でも閉じる動作でも反応します)
+                switchImage(IMAGE_2);
+            });
+
+        } else {
+            // 方法B: フォールバック (API非対応機種向け)
+            // 画面のアスペクト比が急激に変わったことを検知して代用します
+            updateStatus("API非対応。簡易モードで動作中。");
+            
+            let lastAspectRatio = window.innerWidth / window.innerHeight;
+
+            window.addEventListener('resize', () => {
+                const currentAspectRatio = window.innerWidth / window.innerHeight;
+                // アスペクト比の変化率を計算
+                const ratioChange = Math.abs(currentAspectRatio - lastAspectRatio);
+
+                // 閾値(0.3)は調整が必要かもしれません。画面比率が大きく変わったらトリガーとみなす
+                if (ratioChange > 0.3) {
+                     console.log('画面比率が大きく変化しました。画像2へ切り替えます。');
+                     switchImage(IMAGE_2);
+                }
+                lastAspectRatio = currentAspectRatio;
+            });
+        }
+    </script>
 </body>
 </html>
