@@ -3,130 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Foldable Image Switcher</title>
     <style>
-        /* CSS: 画像を全画面表示するためのスタイル */
         body, html {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
-            overflow: hidden; /* スクロールを防ぐ */
-            background-color: #000; /* 画像ロード前の背景色 */
+            overflow: hidden;
+            background-color: #000; /* 背景は黒 */
         }
         #displayImage {
             width: 100%;
             height: 100%;
-            /* 画像の表示モード: 
-               contain = 画像全体が収まるように表示（余白ができる可能性あり）
-               cover   = 画面全体を埋め尽くすように表示（画像の一部が切り取られる）
-               お好みで変更してください。 */
+            /* contain: 画像全体を表示（黒帯が出る可能性あり）
+               cover:   画面いっぱいに表示（端が切れる可能性あり）
+               お好みで書き換えてください。現在は contain です。
+            */
             object-fit: contain; 
             display: block;
-            pointer-events: none; /* 画像自体へのイベントを無効化し、bodyで受け取る */
-        }
-        /* デバッグ用ステータス表示（邪魔なら display: none; にしてください） */
-        #status {
-            position: absolute;
-            top: 10px; left: 10px;
-            color: rgba(255,255,255,0.7);
-            background: rgba(0,0,0,0.5);
-            padding: 4px 8px;
-            font-size: 12px;
-            font-family: sans-serif;
             pointer-events: none;
-            border-radius: 4px;
         }
     </style>
 </head>
 <body>
-    <div id="status">初期化中...</div>
     
-    <img id="displayImage" src="" alt="Fullscreen Image">
+    <img id="displayImage" src="" alt="">
 
     <script>
         // --- 設定 ---
-        const IMAGE_1 = '1.png'; // 初期画像＆タップで戻る画像
-        const IMAGE_2 = '2.png'; // 折りたたみ動作で表示する画像
+        const IMAGE_1 = '1.png'; // 通常時
+        const IMAGE_2 = '2.png'; // 折りたたみ時
         
         const imgElement = document.getElementById('displayImage');
-        const statusElement = document.getElementById('status');
-        let currentImageStr = ""; // 現在表示中の画像ファイル名
+        let currentImageStr = "";
 
-        // --- 関数 ---
-        
-        // ステータス更新用
-        function updateStatus(text) {
-            statusElement.textContent = text;
-        }
-
-        // 画像を指定のファイルに切り替える関数
+        // 画像切り替え関数
         function switchImage(targetImage) {
             if (currentImageStr !== targetImage) {
                 imgElement.src = targetImage;
                 currentImageStr = targetImage;
-
-                if (targetImage === IMAGE_1) {
-                    updateStatus("画像1を表示中。折りたたむと画像2へ。");
-                } else {
-                    updateStatus("画像2を表示中！タップで画像1へ戻る。");
-                }
             }
         }
 
-        // --- 初期化処理 ---
-        // ページ読み込み時に初期画像(1.png)を表示
+        // 初期表示
         switchImage(IMAGE_1);
 
-
-        // --- イベントリスナー設定 ---
-
-        // 【トリガー2】画面タップで画像1に戻る
-        // 画面全体(body)へのタップ/クリックを検知します
-        function handleTap(e) {
-            // タッチによる不要な動作（ズームやスクロール）を防ぐ
-            if (e.type === 'touchstart') {
-                e.preventDefault();
+        // --- 全画面化＆回転ロック処理 ---
+        async function enableFullScreenAndLock() {
+            try {
+                // 1. 全画面化 (ドキュメント全体)
+                if (!document.fullscreenElement) {
+                    await document.documentElement.requestFullscreen();
+                }
+                
+                // 2. 画面回転ロック (縦画面: portrait / 横画面なら: landscape)
+                // ※全画面化された後でないと機能しないブラウザが多いです
+                if (screen.orientation && screen.orientation.lock) {
+                    await screen.orientation.lock("portrait");
+                }
+            } catch (err) {
+                // PCや一部ブラウザではロックできないためエラーは無視します
+                console.log("全画面または回転ロックに失敗しました(仕様の可能性があります):", err);
             }
-            // 画像1に戻す
+        }
+
+        // --- イベントリスナー ---
+
+        // タップ時の処理（画像1に戻す ＆ 全画面・ロック発動）
+        function handleTap(e) {
+            // タッチのデフォルト動作を無効化
+            if (e.type === 'touchstart') e.preventDefault();
+            
+            // 画像を戻す
             switchImage(IMAGE_1);
+            
+            // 全画面＆ロックを実行（ユーザー操作とみなされるこのタイミングで行う）
+            enableFullScreenAndLock();
         }
 
         document.body.addEventListener('click', handleTap);
         document.body.addEventListener('touchstart', handleTap, {passive: false});
 
-
-        // 【トリガー1】折りたたみ動作で画像2へ
-        
-        // 方法A: Device Posture API (本命だが実験的機能)
+        // 折りたたみ検知 (API または リサイズ)
+        // 方法A: Device Posture API
         if (navigator.devicePosture) {
-            updateStatus("API対応。画像1表示中。");
-            
             navigator.devicePosture.addEventListener('change', (event) => {
-                // 姿勢が変化した（パカっとした）タイミングで発火
-                const posture = navigator.devicePosture.type;
-                console.log('姿勢が変化しました:', posture);
-                
-                // 変化を検知したら画像2へ切り替える
-                // (開く動作でも閉じる動作でも反応します)
                 switchImage(IMAGE_2);
             });
-
-        } else {
-            // 方法B: フォールバック (API非対応機種向け)
-            // 画面のアスペクト比が急激に変わったことを検知して代用します
-            updateStatus("API非対応。簡易モードで動作中。");
-            
+        } 
+        // 方法B: リサイズ検知 (フォールバック)
+        else {
             let lastAspectRatio = window.innerWidth / window.innerHeight;
-
             window.addEventListener('resize', () => {
                 const currentAspectRatio = window.innerWidth / window.innerHeight;
-                // アスペクト比の変化率を計算
                 const ratioChange = Math.abs(currentAspectRatio - lastAspectRatio);
-
-                // 閾値(0.3)は調整が必要かもしれません。画面比率が大きく変わったらトリガーとみなす
+                
                 if (ratioChange > 0.3) {
-                     console.log('画面比率が大きく変化しました。画像2へ切り替えます。');
                      switchImage(IMAGE_2);
                 }
                 lastAspectRatio = currentAspectRatio;
