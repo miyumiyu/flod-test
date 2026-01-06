@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>折りたたみスマホ連動デモ (カスタム)</title>
+    <title>折りたたみスマホ連動デモ (長押し設定)</title>
     <style>
         body, html {
             height: 100%;
@@ -13,8 +13,10 @@
             align-items: center;
             background-color: #222;
             overflow: hidden;
-            /* タップ時のハイライトを無効化 */
-            -webkit-tap-highlight-color: transparent;
+            /* 長押しでのテキスト選択やメニュー表示を防ぐCSS */
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         #display-image {
@@ -23,17 +25,19 @@
             object-fit: contain;
             transition: opacity 0.2s ease;
             cursor: pointer;
+            /* 画像自体のドラッグを禁止 */
+            -webkit-user-drag: none;
         }
 
-        /* 設定メニュー（オーバーレイ）のスタイル */
+        /* 設定メニュー（オーバーレイ） */
         #settings-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            display: none; /* 初期状態は非表示 */
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
             flex-direction: column;
             justify-content: center;
             align-items: center;
@@ -42,12 +46,11 @@
             font-family: sans-serif;
         }
 
-        /* ボタンのデザイン */
         .upload-btn {
             background: #444;
             color: #fff;
             border: 1px solid #666;
-            padding: 15px 30px;
+            padding: 15px;
             margin: 10px;
             font-size: 16px;
             border-radius: 8px;
@@ -60,19 +63,13 @@
             background: #d9534f;
             border: none;
         }
-        h2 {
-            margin-bottom: 20px;
-            font-size: 18px;
-        }
-        p {
-            font-size: 12px;
-            color: #aaa;
-        }
+        h2 { margin-bottom: 20px; font-size: 18px; }
+        p { font-size: 12px; color: #aaa; margin-top: -5px; margin-bottom: 15px; }
     </style>
 </head>
 <body>
 
-    <img id="display-image" src="1.png" alt="画像をダブルタップして設定">
+    <img id="display-image" src="1.png" alt="長押しして設定">
 
     <div id="settings-overlay">
         <h2>画像設定メニュー</h2>
@@ -96,14 +93,11 @@
     <input type="file" id="file-folded" accept="image/*" style="display: none;">
 
     <script>
-        // --- 変数定義 ---
         const imageElement = document.getElementById('display-image');
         const overlay = document.getElementById('settings-overlay');
         
-        // 初期画像パス（初期状態ではファイルシステム上の画像を参照）
         let normalImgSrc = '1.png';
         let foldedImgSrc = '2.png';
-        
         let isShowingImage2 = false;
 
         // --- 画像切り替えロジック ---
@@ -112,98 +106,106 @@
             isShowingImage2 = isFoldedImage;
         }
 
-        // --- 折りたたみ検知 (Viewport Segments) ---
+        // --- 折りたたみ検知 ---
         const mediaQueryList = window.matchMedia('(vertical-viewport-segments: 2)');
-
         function handlePostureChange(evt) {
             if (evt.matches) {
-                // 折れた時 -> 折畳画像を表示
+                // 折れた時
                 if (!isShowingImage2) {
                     switchImage(foldedImgSrc, true);
                 }
             }
         }
-
         if (mediaQueryList.addEventListener) {
             mediaQueryList.addEventListener('change', handlePostureChange);
         } else {
             mediaQueryList.addListener(handlePostureChange);
         }
-        handlePostureChange(mediaQueryList); // 初期チェック
-
-        // --- タップ操作 (シングルタップで通常に戻る) ---
-        // ダブルタップ判定と競合しないよう、少し工夫が必要ですが
-        // 今回は単純なclickイベントで実装します（ダブルタップ時も反応してしまいますが実用上問題ないと判断）
-        imageElement.addEventListener('click', function(e) {
-            // 設定画面が開いていない、かつ折畳画像表示中なら戻す
-            if (overlay.style.display !== 'flex' && isShowingImage2) {
-                switchImage(normalImgSrc, false);
-            }
-        });
-
-        // --- ダブルタップで設定メニュー開閉 ---
-        let lastTouchTime = 0;
-        document.addEventListener('touchstart', function(e) {
-            const currentTime = new Date().getTime();
-            const tapLength = currentTime - lastTouchTime;
-            
-            // 500ミリ秒以内の連続タップをダブルタップとみなす
-            if (tapLength < 500 && tapLength > 0) {
-                openSettings();
-                e.preventDefault(); // ズーム等を防ぐ
-            }
-            lastTouchTime = currentTime;
-        });
-
-        // PCでのデバッグ用（ダブルクリック）
-        document.addEventListener('dblclick', function() {
-            openSettings();
-        });
-
-        function openSettings() {
-            overlay.style.display = 'flex';
-        }
-
-        function closeSettings() {
-            overlay.style.display = 'none';
-        }
+        handlePostureChange(mediaQueryList);
 
         // --- ファイルアップロード処理 ---
-        
-        // 通常画像の読み込み
         document.getElementById('file-normal').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
                 reader.onload = function(evt) {
-                    normalImgSrc = evt.target.result; // データURLとして保存
+                    normalImgSrc = evt.target.result;
                     document.getElementById('status-normal').innerText = file.name;
-                    // 現在通常モードなら即座に反映
-                    if (!isShowingImage2) {
-                        switchImage(normalImgSrc, false);
-                    }
+                    if (!isShowingImage2) switchImage(normalImgSrc, false);
                 };
                 reader.readAsDataURL(file);
             }
         });
 
-        // 折畳画像の読み込み
         document.getElementById('file-folded').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
                 reader.onload = function(evt) {
-                    foldedImgSrc = evt.target.result; // データURLとして保存
+                    foldedImgSrc = evt.target.result;
                     document.getElementById('status-folded').innerText = file.name;
-                    // 現在折畳モードなら即座に反映
-                    if (isShowingImage2) {
-                        switchImage(foldedImgSrc, true);
-                    }
+                    if (isShowingImage2) switchImage(foldedImgSrc, true);
                 };
                 reader.readAsDataURL(file);
             }
         });
 
+        // ============================================
+        //  ここから操作ロジック（長押し＆タップ）
+        // ============================================
+
+        // コンテキストメニュー（右クリック/長押しメニュー）を無効化
+        window.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+
+        let longPressTimer;
+        const HOLD_DURATION = 800; // 長押しの時間（ミリ秒）0.8秒
+
+        // 画面に指が触れたとき
+        document.addEventListener('touchstart', function(e) {
+            // メニューが開いているときは何もしない
+            if (overlay.style.display === 'flex') return;
+
+            // 長押しのタイマー開始
+            longPressTimer = setTimeout(function() {
+                openSettings();
+            }, HOLD_DURATION);
+        }, { passive: false });
+
+        // 指が離れたとき
+        document.addEventListener('touchend', function(e) {
+            // タイマーを解除（長押し成立前に指を離したらキャンセル）
+            clearTimeout(longPressTimer);
+        });
+
+        // 指が動いたとき（スクロールなど）
+        document.addEventListener('touchmove', function(e) {
+            // 指が動いたら長押しキャンセルとみなす
+            clearTimeout(longPressTimer);
+        });
+
+
+        // タップ（クリック）時の動作：画像リセット
+        imageElement.addEventListener('click', function(e) {
+            // 設定メニューが開いていない、かつ折畳画像が表示中なら戻す
+            if (overlay.style.display !== 'flex' && isShowingImage2) {
+                switchImage(normalImgSrc, false);
+            }
+        });
+
+
+        // --- メニュー開閉関数 ---
+        function openSettings() {
+            overlay.style.display = 'flex';
+            // PC等のデバッグ用にログ出力
+            console.log('設定メニューを開きました');
+        }
+
+        function closeSettings() {
+            overlay.style.display = 'none';
+        }
+        
     </script>
 </body>
 </html>
