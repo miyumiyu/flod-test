@@ -3,110 +3,207 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-capable" content="yes">
-    <title>Foldable Image Switcher</title>
+    <title>折りたたみスマホ連動デモ (カスタム)</title>
     <style>
         body, html {
+            height: 100%;
             margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #222;
             overflow: hidden;
-            background-color: #000; /* 背景は黒 */
+            /* タップ時のハイライトを無効化 */
+            -webkit-tap-highlight-color: transparent;
         }
-        #displayImage {
+
+        #display-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transition: opacity 0.2s ease;
+            cursor: pointer;
+        }
+
+        /* 設定メニュー（オーバーレイ）のスタイル */
+        #settings-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            /* contain: 画像全体を表示（黒帯が出る可能性あり）
-               cover:   画面いっぱいに表示（端が切れる可能性あり）
-               お好みで書き換えてください。現在は contain です。
-            */
-            object-fit: contain; 
-            display: block;
-            pointer-events: none;
+            background: rgba(0, 0, 0, 0.8);
+            display: none; /* 初期状態は非表示 */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+            font-family: sans-serif;
+        }
+
+        /* ボタンのデザイン */
+        .upload-btn {
+            background: #444;
+            color: #fff;
+            border: 1px solid #666;
+            padding: 15px 30px;
+            margin: 10px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 80%;
+            text-align: center;
+        }
+        .close-btn {
+            margin-top: 30px;
+            background: #d9534f;
+            border: none;
+        }
+        h2 {
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+        p {
+            font-size: 12px;
+            color: #aaa;
         }
     </style>
 </head>
 <body>
-    
-    <img id="displayImage" src="" alt="">
+
+    <img id="display-image" src="1.png" alt="画像をダブルタップして設定">
+
+    <div id="settings-overlay">
+        <h2>画像設定メニュー</h2>
+        
+        <button class="upload-btn" onclick="document.getElementById('file-normal').click()">
+            ① [通常] 画像を選択
+        </button>
+        <p>現在: <span id="status-normal">1.png (初期)</span></p>
+
+        <button class="upload-btn" onclick="document.getElementById('file-folded').click()">
+            ② [折畳] 画像を選択
+        </button>
+        <p>現在: <span id="status-folded">2.png (初期)</span></p>
+
+        <button class="upload-btn close-btn" onclick="closeSettings()">
+            閉じる
+        </button>
+    </div>
+
+    <input type="file" id="file-normal" accept="image/*" style="display: none;">
+    <input type="file" id="file-folded" accept="image/*" style="display: none;">
 
     <script>
-        // --- 設定 ---
-        const IMAGE_1 = '1.png'; // 通常時
-        const IMAGE_2 = '2.png'; // 折りたたみ時
+        // --- 変数定義 ---
+        const imageElement = document.getElementById('display-image');
+        const overlay = document.getElementById('settings-overlay');
         
-        const imgElement = document.getElementById('displayImage');
-        let currentImageStr = "";
+        // 初期画像パス（初期状態ではファイルシステム上の画像を参照）
+        let normalImgSrc = '1.png';
+        let foldedImgSrc = '2.png';
+        
+        let isShowingImage2 = false;
 
-        // 画像切り替え関数
-        function switchImage(targetImage) {
-            if (currentImageStr !== targetImage) {
-                imgElement.src = targetImage;
-                currentImageStr = targetImage;
+        // --- 画像切り替えロジック ---
+        function switchImage(src, isFoldedImage) {
+            imageElement.src = src;
+            isShowingImage2 = isFoldedImage;
+        }
+
+        // --- 折りたたみ検知 (Viewport Segments) ---
+        const mediaQueryList = window.matchMedia('(vertical-viewport-segments: 2)');
+
+        function handlePostureChange(evt) {
+            if (evt.matches) {
+                // 折れた時 -> 折畳画像を表示
+                if (!isShowingImage2) {
+                    switchImage(foldedImgSrc, true);
+                }
             }
         }
 
-        // 初期表示
-        switchImage(IMAGE_1);
+        if (mediaQueryList.addEventListener) {
+            mediaQueryList.addEventListener('change', handlePostureChange);
+        } else {
+            mediaQueryList.addListener(handlePostureChange);
+        }
+        handlePostureChange(mediaQueryList); // 初期チェック
 
-        // --- 全画面化＆回転ロック処理 ---
-        async function enableFullScreenAndLock() {
-            try {
-                // 1. 全画面化 (ドキュメント全体)
-                if (!document.fullscreenElement) {
-                    await document.documentElement.requestFullscreen();
-                }
-                
-                // 2. 画面回転ロック (縦画面: portrait / 横画面なら: landscape)
-                // ※全画面化された後でないと機能しないブラウザが多いです
-                if (screen.orientation && screen.orientation.lock) {
-                    await screen.orientation.lock("portrait");
-                }
-            } catch (err) {
-                // PCや一部ブラウザではロックできないためエラーは無視します
-                console.log("全画面または回転ロックに失敗しました(仕様の可能性があります):", err);
+        // --- タップ操作 (シングルタップで通常に戻る) ---
+        // ダブルタップ判定と競合しないよう、少し工夫が必要ですが
+        // 今回は単純なclickイベントで実装します（ダブルタップ時も反応してしまいますが実用上問題ないと判断）
+        imageElement.addEventListener('click', function(e) {
+            // 設定画面が開いていない、かつ折畳画像表示中なら戻す
+            if (overlay.style.display !== 'flex' && isShowingImage2) {
+                switchImage(normalImgSrc, false);
             }
-        }
+        });
 
-        // --- イベントリスナー ---
-
-        // タップ時の処理（画像1に戻す ＆ 全画面・ロック発動）
-        function handleTap(e) {
-            // タッチのデフォルト動作を無効化
-            if (e.type === 'touchstart') e.preventDefault();
+        // --- ダブルタップで設定メニュー開閉 ---
+        let lastTouchTime = 0;
+        document.addEventListener('touchstart', function(e) {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTouchTime;
             
-            // 画像を戻す
-            switchImage(IMAGE_1);
-            
-            // 全画面＆ロックを実行（ユーザー操作とみなされるこのタイミングで行う）
-            enableFullScreenAndLock();
+            // 500ミリ秒以内の連続タップをダブルタップとみなす
+            if (tapLength < 500 && tapLength > 0) {
+                openSettings();
+                e.preventDefault(); // ズーム等を防ぐ
+            }
+            lastTouchTime = currentTime;
+        });
+
+        // PCでのデバッグ用（ダブルクリック）
+        document.addEventListener('dblclick', function() {
+            openSettings();
+        });
+
+        function openSettings() {
+            overlay.style.display = 'flex';
         }
 
-        document.body.addEventListener('click', handleTap);
-        document.body.addEventListener('touchstart', handleTap, {passive: false});
-
-        // 折りたたみ検知 (API または リサイズ)
-        // 方法A: Device Posture API
-        if (navigator.devicePosture) {
-            navigator.devicePosture.addEventListener('change', (event) => {
-                switchImage(IMAGE_2);
-            });
-        } 
-        // 方法B: リサイズ検知 (フォールバック)
-        else {
-            let lastAspectRatio = window.innerWidth / window.innerHeight;
-            window.addEventListener('resize', () => {
-                const currentAspectRatio = window.innerWidth / window.innerHeight;
-                const ratioChange = Math.abs(currentAspectRatio - lastAspectRatio);
-                
-                if (ratioChange > 0.3) {
-                     switchImage(IMAGE_2);
-                }
-                lastAspectRatio = currentAspectRatio;
-            });
+        function closeSettings() {
+            overlay.style.display = 'none';
         }
+
+        // --- ファイルアップロード処理 ---
+        
+        // 通常画像の読み込み
+        document.getElementById('file-normal').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    normalImgSrc = evt.target.result; // データURLとして保存
+                    document.getElementById('status-normal').innerText = file.name;
+                    // 現在通常モードなら即座に反映
+                    if (!isShowingImage2) {
+                        switchImage(normalImgSrc, false);
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 折畳画像の読み込み
+        document.getElementById('file-folded').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    foldedImgSrc = evt.target.result; // データURLとして保存
+                    document.getElementById('status-folded').innerText = file.name;
+                    // 現在折畳モードなら即座に反映
+                    if (isShowingImage2) {
+                        switchImage(foldedImgSrc, true);
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
     </script>
 </body>
 </html>
